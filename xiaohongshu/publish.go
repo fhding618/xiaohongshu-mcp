@@ -584,6 +584,8 @@ func isElementVisible(elem *rod.Element) bool {
 			strings.Contains(styleStr, "top: -9999px") ||
 			strings.Contains(styleStr, "position: absolute; left: -9999px") ||
 			strings.Contains(styleStr, "display: none") ||
+			strings.Contains(styleStr, "opacity: 0") ||
+			strings.Contains(styleStr, "opacity: 1e-05") ||
 			strings.Contains(styleStr, "visibility: hidden") {
 			return false
 		}

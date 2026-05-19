@@ -1,6 +1,7 @@
 package cookies
 
 import (
+	"github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
 
@@ -72,5 +73,6 @@ func GetCookiesFilePath() string {
 	}
 
 	// 文件不存在，使用新路径（当前目录）
+	logrus.Infof("Cookie path=%s", path)
 	return path
 }
