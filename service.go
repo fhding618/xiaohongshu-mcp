@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"time"
@@ -264,7 +265,14 @@ func (s *XiaohongshuService) publishContent(ctx context.Context, content xiaohon
 	}
 
 	// 执行发布
-	return action.Publish(ctx, content)
+	if err := action.Publish(ctx, content); err != nil {
+		return err
+	}
+
+	sleepSeconds := rand.IntN(6) + 5
+	logrus.Infof("图文发布完成，等待 %d 秒后关闭浏览器", sleepSeconds)
+	time.Sleep(time.Duration(sleepSeconds) * time.Second)
+	return nil
 }
 
 // PublishVideo 发布视频（本地文件）
