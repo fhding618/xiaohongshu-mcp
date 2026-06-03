@@ -1,11 +1,15 @@
 package browser
 
 import (
+	"encoding/json"
 	"net/url"
 	"os"
 
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
+	"github.com/go-rod/stealth"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/headless_browser"
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
 )
 
@@ -14,6 +18,11 @@ type browserConfig struct {
 }
 
 type Option func(*browserConfig)
+
+type Browser struct {
+	rodBrowser *rod.Browser
+	launcher   *launcher.Launcher
+}
 
 func WithBinPath(binPath string) Option {
 	return func(c *browserConfig) {
@@ -35,35 +44,57 @@ func maskProxyCredentials(proxyURL string) string {
 	return u.String()
 }
 
-func NewBrowser(headless bool, options ...Option) *headless_browser.Browser {
+func NewBrowser(headless bool, options ...Option) *Browser {
 	cfg := &browserConfig{}
 	for _, opt := range options {
 		opt(cfg)
 	}
 
-	opts := []headless_browser.Option{
-		headless_browser.WithHeadless(headless),
-	}
+	l := launcher.New().
+		Headless(headless).
+		Set("--no-sandbox")
+
 	if cfg.binPath != "" {
-		opts = append(opts, headless_browser.WithChromeBinPath(cfg.binPath))
+		l = l.Bin(cfg.binPath)
 	}
 
 	// Read proxy from environment variable
 	if proxy := os.Getenv("XHS_PROXY"); proxy != "" {
-		opts = append(opts, headless_browser.WithProxy(proxy))
+		l = l.Proxy(proxy)
 		logrus.Infof("Using proxy: %s", maskProxyCredentials(proxy))
 	}
 
-	// 加载 cookies
+	url := l.MustLaunch()
+	rodBrowser := rod.New().
+		ControlURL(url).
+		NoDefaultDevice().
+		MustConnect()
+
 	cookiePath := cookies.GetCookiesFilePath()
 	cookieLoader := cookies.NewLoadCookie(cookiePath)
-
 	if data, err := cookieLoader.LoadCookies(); err == nil {
-		opts = append(opts, headless_browser.WithCookies(string(data)))
+		var cks []*proto.NetworkCookie
+		if err := json.Unmarshal(data, &cks); err != nil {
+			logrus.Warnf("failed to unmarshal cookies: %v", err)
+		} else {
+			rodBrowser.MustSetCookies(cks...)
+		}
 		logrus.Debugf("loaded cookies from filesuccessfully")
 	} else {
 		logrus.Warnf("failed to load cookies: %v", err)
 	}
 
-	return headless_browser.New(opts...)
+	return &Browser{
+		rodBrowser: rodBrowser,
+		launcher:   l,
+	}
+}
+
+func (b *Browser) Close() {
+	b.rodBrowser.MustClose()
+	b.launcher.Cleanup()
+}
+
+func (b *Browser) NewPage() *rod.Page {
+	return stealth.MustPage(b.rodBrowser)
 }

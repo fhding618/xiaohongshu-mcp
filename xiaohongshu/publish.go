@@ -338,11 +338,7 @@ func submitPublish(page *rod.Page, title, content string, tags []string, schedul
 		return errors.Wrap(err, "绑定商品失败")
 	}
 
-	submitButton, err := page.Element(".publish-page-publish-btn button.bg-red")
-	if err != nil {
-		return errors.Wrap(err, "查找发布按钮失败")
-	}
-	if err := submitButton.Click(proto.InputMouseButtonLeft, 1); err != nil {
+	if err := clickPublishButton(page); err != nil {
 		return errors.Wrap(err, "点击发布按钮失败")
 	}
 
@@ -411,6 +407,71 @@ func makeMaxLengthError(elemText string) error {
 	currLen, maxLen := parts[0], parts[1]
 
 	return errors.Errorf("当前输入长度为%s，最大长度为%s", currLen, maxLen)
+}
+
+func clickPublishButton(page *rod.Page) error {
+	host, err := page.Element(`xhs-publish-btn[is-publish="true"]`)
+	if err != nil {
+		return errors.Wrap(err, "查找发布按钮组件失败")
+	}
+
+	submitText, err := host.Attribute("submit-text")
+	if err != nil {
+		return errors.Wrap(err, "读取发布按钮文本失败")
+	}
+	if submitText == nil || *submitText != "发布" {
+		if submitText == nil {
+			return errors.New("发布按钮文本缺失")
+		}
+		return errors.Errorf("发布按钮文本异常: %s", *submitText)
+	}
+
+	submitDisabled, err := host.Attribute("submit-disabled")
+	if err != nil {
+		return errors.Wrap(err, "读取发布按钮状态失败")
+	}
+	if submitDisabled != nil && *submitDisabled == "true" {
+		return errors.New("发布按钮当前不可点击")
+	}
+
+	shape, err := host.Shape()
+	if err != nil {
+		return errors.Wrap(err, "获取发布按钮组件位置失败")
+	}
+	if len(shape.Quads) == 0 || len(shape.Quads[0]) < 8 {
+		return errors.New("发布按钮组件位置为空")
+	}
+
+	quad := shape.Quads[0]
+	minX, maxX := quad[0], quad[0]
+	minY, maxY := quad[1], quad[1]
+	for i := 0; i < 8; i += 2 {
+		if quad[i] < minX {
+			minX = quad[i]
+		}
+		if quad[i] > maxX {
+			maxX = quad[i]
+		}
+		if quad[i+1] < minY {
+			minY = quad[i+1]
+		}
+		if quad[i+1] > maxY {
+			maxY = quad[i+1]
+		}
+	}
+
+	// Shadow DOM 内部两个 120px 按钮居中排列，间距 24px；右侧发布按钮中心相对组件中心偏移 72px。
+	x := (minX+maxX)/2 + 72
+	y := (minY + maxY) / 2
+
+	if err := page.Mouse.MoveTo(proto.NewPoint(x, y)); err != nil {
+		return errors.Wrap(err, "移动到发布按钮失败")
+	}
+	if err := page.Mouse.Click(proto.InputMouseButtonLeft, 1); err != nil {
+		return errors.Wrap(err, "点击发布按钮失败")
+	}
+
+	return nil
 }
 
 // 查找内容输入框 - 使用Race方法处理两种样式

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/headless_browser"
 	"github.com/xpzouying/xiaohongshu-mcp/browser"
 	"github.com/xpzouying/xiaohongshu-mcp/configs"
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
@@ -113,6 +113,12 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 	isLoggedIn, err := loginAction.CheckLoginStatus(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if isLoggedIn {
+		if err := backupAndSaveCookies(page); err != nil {
+			return nil, err
+		}
 	}
 
 	response := &LoginStatusResponse{
@@ -545,7 +551,7 @@ func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xse
 	}, nil
 }
 
-func newBrowser() *headless_browser.Browser {
+func newBrowser() *browser.Browser {
 	return browser.NewBrowser(configs.IsHeadless(), browser.WithBinPath(configs.GetBinPath()))
 }
 
@@ -561,6 +567,36 @@ func saveCookies(page *rod.Page) error {
 	}
 
 	cookieLoader := cookies.NewLoadCookie(cookies.GetCookiesFilePath())
+	return cookieLoader.SaveCookies(data)
+}
+
+func backupAndSaveCookies(page *rod.Page) error {
+	cookiePath := cookies.GetCookiesFilePath()
+
+	data, err := os.ReadFile(cookiePath)
+	if err != nil {
+		return err
+	}
+
+	backupPath := filepath.Join(
+		filepath.Dir(cookiePath),
+		fmt.Sprintf("cookies_%s.json", time.Now().Format("20060102150405")),
+	)
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		return err
+	}
+
+	cks, err := page.Browser().GetCookies()
+	if err != nil {
+		return err
+	}
+
+	data, err = json.Marshal(cks)
+	if err != nil {
+		return err
+	}
+
+	cookieLoader := cookies.NewLoadCookie(cookiePath)
 	return cookieLoader.SaveCookies(data)
 }
 
